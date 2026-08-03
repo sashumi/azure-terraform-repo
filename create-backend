@@ -1,5 +1,10 @@
 - task: PowerShell@2
   displayName: 'Create and display backend.tf'
+  env:
+    TF_BACKEND_RESOURCE_GROUP: ${{ variables.stateResourceGroupName }}
+    TF_BACKEND_STORAGE_ACCOUNT: ${{ variables.stateStorageAccountNamePrefix }}
+    TF_BACKEND_CONTAINER: ${{ variables.stateContainerName }}
+    TF_BACKEND_KEY: ${{ variables.stateFileName }}
   inputs:
     targetType: inline
     pwsh: true
@@ -7,30 +12,62 @@
     script: |
       $ErrorActionPreference = "Stop"
 
-      $backendFile = Join-Path $PWD "backend.tf"
+      Write-Host "CHECKPOINT 1: PowerShell task started"
+      Write-Host "Current directory: $(Get-Location)"
 
-      Write-Host "Creating backend configuration at:"
+      $requiredVariables = @{
+        TF_BACKEND_RESOURCE_GROUP  = $env:TF_BACKEND_RESOURCE_GROUP
+        TF_BACKEND_STORAGE_ACCOUNT = $env:TF_BACKEND_STORAGE_ACCOUNT
+        TF_BACKEND_CONTAINER       = $env:TF_BACKEND_CONTAINER
+        TF_BACKEND_KEY             = $env:TF_BACKEND_KEY
+      }
+
+      foreach ($item in $requiredVariables.GetEnumerator()) {
+        if ([string]::IsNullOrWhiteSpace($item.Value)) {
+          throw "Required backend value '$($item.Key)' is empty."
+        }
+
+        Write-Host "CHECKPOINT 2: $($item.Key) has been supplied."
+      }
+
+      $backendFile = Join-Path (Get-Location) "backend.tf"
+
+      Write-Host "CHECKPOINT 3: Creating backend.tf at:"
       Write-Host $backendFile
 
-      @"
+      $backendContent = @"
       terraform {
         backend "azurerm" {
-          resource_group_name  = "${{ variables.stateResourceGroupName }}"
-          storage_account_name = "${{ variables.stateStorageAccountNamePrefix }}"
-          container_name       = "${{ variables.stateContainerName }}"
-          key                  = "${{ variables.stateFileName }}"
-
-          use_azuread_auth = true
-          use_oidc         = true
+          resource_group_name  = "$($env:TF_BACKEND_RESOURCE_GROUP)"
+          storage_account_name = "$($env:TF_BACKEND_STORAGE_ACCOUNT)"
+          container_name       = "$($env:TF_BACKEND_CONTAINER)"
+          key                  = "$($env:TF_BACKEND_KEY)"
+          use_azuread_auth      = true
+          use_oidc              = true
         }
       }
-      "@ | Set-Content `
-          -Path $backendFile `
-          -Encoding utf8 `
-          -Force
+      "@
+
+      Set-Content `
+        -Path $backendFile `
+        -Value $backendContent `
+        -Encoding utf8 `
+        -Force
+
+      Write-Host "CHECKPOINT 4: Set-Content completed."
 
       if (-not (Test-Path $backendFile)) {
-        throw "backend.tf was not created."
+        throw "backend.tf was not created at $backendFile."
+      }
+
+      Write-Host "CHECKPOINT 5: backend.tf exists."
+
+      $backendFileInfo = Get-Item $backendFile
+
+      Write-Host "Backend file size: $($backendFileInfo.Length) bytes"
+
+      if ($backendFileInfo.Length -eq 0) {
+        throw "backend.tf exists but is empty."
       }
 
       Write-Host ""
@@ -41,5 +78,5 @@
       Get-Content -Path $backendFile
 
       Write-Host "=========================================="
-      Write-Host "backend.tf creation completed successfully"
+      Write-Host "CHECKPOINT 6: backend.tf displayed successfully"
       Write-Host "=========================================="
