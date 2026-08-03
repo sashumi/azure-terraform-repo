@@ -1,0 +1,45 @@
+- task: PowerShell@2
+  displayName: 'Create and display backend.tf'
+  inputs:
+    targetType: inline
+    pwsh: true
+    workingDirectory: '$(System.DefaultWorkingDirectory)/deployments/${{ parameters.solution }}'
+    script: |
+      $ErrorActionPreference = "Stop"
+
+      $backendFile = Join-Path $PWD "backend.tf"
+
+      Write-Host "Creating backend configuration at:"
+      Write-Host $backendFile
+
+      @"
+      terraform {
+        backend "azurerm" {
+          resource_group_name  = "${{ variables.stateResourceGroupName }}"
+          storage_account_name = "${{ variables.stateStorageAccountNamePrefix }}"
+          container_name       = "${{ variables.stateContainerName }}"
+          key                  = "${{ variables.stateFileName }}"
+
+          use_azuread_auth = true
+          use_oidc         = true
+        }
+      }
+      "@ | Set-Content `
+          -Path $backendFile `
+          -Encoding utf8 `
+          -Force
+
+      if (-not (Test-Path $backendFile)) {
+        throw "backend.tf was not created."
+      }
+
+      Write-Host ""
+      Write-Host "=========================================="
+      Write-Host "Generated backend.tf"
+      Write-Host "=========================================="
+
+      Get-Content -Path $backendFile
+
+      Write-Host "=========================================="
+      Write-Host "backend.tf creation completed successfully"
+      Write-Host "=========================================="

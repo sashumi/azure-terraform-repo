@@ -1,0 +1,47 @@
+Write-Verbose ("Executing 'terraform init {0}'" -f ($inputObject -join ' ')) -Verbose
+terraform init @inputObject
+Write-Host ""
+Write-Host "=========================================="
+Write-Host "CHECKPOINT: Before Terraform init"
+Write-Host "Current directory: $(Get-Location)"
+Write-Host "=========================================="
+
+$backendFile = Join-Path (Get-Location) "backend.tf"
+
+if (-not (Test-Path $backendFile)) {
+  throw "backend.tf was not found at: $backendFile"
+}
+
+Write-Host "backend.tf found at: $backendFile"
+Write-Host ""
+Write-Host "----------- backend.tf content -----------"
+
+Get-Content -Path $backendFile
+
+Write-Host "--------- end backend.tf content ---------"
+Write-Host ""
+
+Write-Host "Terraform init arguments:"
+$inputObject | ForEach-Object {
+  Write-Host "  $_"
+}
+
+Write-Host "=========================================="
+Write-Host "Starting terraform init"
+Write-Host "=========================================="
+
+Write-Verbose ("Executing 'terraform init {0}'" -f ($inputObject -join ' ')) -Verbose
+
+terraform init @inputObject
+
+$TFExitCode = $LASTEXITCODE
+
+Write-Host "Terraform init exit code: $TFExitCode"
+
+if ($TFExitCode -ne 0) {
+  throw "terraform init failed with exit code $TFExitCode"
+}
+
+Write-Host "=========================================="
+Write-Host "Terraform init completed successfully"
+Write-Host "=========================================="
