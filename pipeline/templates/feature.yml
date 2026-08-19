@@ -1,0 +1,53 @@
+jobs:
+  - job: ${{ parameters.environmentName }}_Plan
+    displayName: '${{ parameters.environmentName }} - Terraform Plan'
+
+    steps:
+
+      # NEW
+      - template: feature-state.yml
+        parameters:
+          environmentName: ${{ parameters.environmentName }}
+          azureServiceConnection: ${{ variables.azureServiceConnection }}
+          backendStorageAccount: $(terraformBackendStorageAccount)
+          backendContainer: $(terraformBackendContainer)
+          devBackendKey: 'dev.tfstate'
+
+      # EXISTING
+      - template: terraform-plan.yml
+        parameters:
+          environment: ${{ parameters.environmentName }}
+          workingDirectory: ${{ parameters.workingDirectory }}
+          terraformVersion: ${{ parameters.terraformVersion }}
+          azureServiceConnection: ${{ variables.azureServiceConnection }}
+          backendResourceGroup: $(terraformBackendResourceGroup)
+          backendStorageAccount: $(terraformBackendStorageAccount)
+          backendContainer: $(terraformBackendContainer)
+
+          # CHANGE THIS LINE
+          backendKey: '$(effectiveBackendKey)'
+
+          variablesFile: '$(System.DefaultWorkingDirectory)/environments/${{ lower(parameters.environmentName) }}.tfvars'
+          location: $(location)
+          VNetResourceGroupName: $(VNetResourceGroupName)
+          vnetName: $(vnetName)
+          subnetName: $(subnetName)
+          privateEndpointName: $(privateEndpointName)
+          privateendpointsubnetcidr: $(privateendpointsubnetcidr)
+          privateendpointsubnetnsg: $(privateendpointsubnetnsg)
+          stateSubscription: $(stateSubscription)
+          stateStorageAccountSku: $(stateStorageAccountSku)
+
+
+condition: >
+  and(
+    succeeded(),
+    not(startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/')),
+    or(
+      and(
+        ne(lower('${{ parameters.environmentName }}'), 'prod'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      ),
+      eq(${{ parameters.runTerraformApply }}, true)
+    )
+  )

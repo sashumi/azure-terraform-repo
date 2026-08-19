@@ -1,0 +1,88 @@
+# Feature branch Terraform state preparation
+
+parameters:
+  - name: environmentName
+    type: string
+
+  - name: azureServiceConnection
+    type: string
+
+  - name: backendStorageAccount
+    type: string
+
+  - name: backendContainer
+    type: string
+
+  - name: devBackendKey
+    type: string
+    default: 'dev.tfstate'
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Prepare Feature Terraform State'
+    condition: and(
+      succeeded(),
+      eq('${{ lower(parameters.environmentName) }}', 'dev'),
+      startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/')
+      )
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+
+        echo "Build.SourceBranch: $(Build.SourceBranch)"
+
+        # Example:
+        # refs/heads/feature/add-keyvault
+        # becomes:
+        # feature/add-keyvault
+        BRANCH_NAME="${BUILD_SOURCEBRANCH#refs/heads/}"
+
+        # Make branch name safe for use as blob/state name.
+        # feature/add-keyvault -> feature-add-keyvault
+        SAFE_BRANCH=$(echo "${BRANCH_NAME}" \
+          | tr '[:upper:]' '[:lower:]' \
+          | sed 's#[^a-z0-9._-]#-#g')
+
+        FEATURE_STATE="${SAFE_BRANCH}.tfstate"
+
+        echo "Feature backend state: ${FEATURE_STATE}"
+
+        EXISTS=$(az storage blob exists \
+          --account-name "${{ parameters.backendStorageAccount }}" \
+          --container-name "${{ parameters.backendContainer }}" \
+          --name "${FEATURE_STATE}" \
+          --auth-mode login \
+          --query exists \
+          --output tsv)
+
+        if [ "${EXISTS}" = "true" ]; then
+
+          echo "Feature state already exists."
+          echo "Reusing: ${FEATURE_STATE}"
+
+        else
+
+          echo "Feature state does not exist."
+          echo "Copying ${{ parameters.devBackendKey }} -> ${FEATURE_STATE}"
+
+          SOURCE_URI="https://${{ parameters.backendStorageAccount }}.blob.core.windows.net/${{ parameters.backendContainer }}/${{ parameters.devBackendKey }}"
+
+          az storage blob copy start \
+            --account-name "${{ parameters.backendStorageAccount }}" \
+            --destination-container "${{ parameters.backendContainer }}" \
+            --destination-blob "${FEATURE_STATE}" \
+            --source-uri "${SOURCE_URI}" \
+            --auth-mode login \
+            --requires-sync true \
+            --only-show-errors
+
+          echo "Feature state created successfully."
+        fi
+
+        # Make the state key available to subsequent tasks in THIS job.
+        echo "##vso[task.setvariable variable=effectiveBackendKey]${FEATURE_STATE}"
+
+        echo "Effective backend key: ${FEATURE_STATE}"
