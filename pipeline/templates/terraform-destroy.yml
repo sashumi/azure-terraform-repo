@@ -1,0 +1,16 @@
+- task: DownloadPipelineArtifact@2
+  displayName: 'Download Terraform Destroy Plan'
+  inputs:
+    artifact: 'tfplan-destroy-${{ lower(parameters.environment) }}'
+    path: ${{ parameters.workingDirectory }}
+
+- task: TerraformTask@5
+  displayName: 'Execute Terraform Destroy Plan'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: ${{ parameters.workingDirectory }}
+    environmentServiceNameAzureRM: ${{ parameters.azureServiceConnection }}
+    commandOptions: >
+      -parallelism=1
+      "tfplan-destroy-${{ lower(parameters.environment) }}"

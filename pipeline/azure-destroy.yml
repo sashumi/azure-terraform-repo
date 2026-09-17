@@ -1,0 +1,100 @@
+# Azure DevOps Pipeline for Terraform Destroy
+
+trigger: none
+pr: none
+
+parameters:
+  - name: runTerraformDestroy
+    displayName: 'Run Terraform Destroy'
+    type: boolean
+    default: false
+
+pool:
+  name: 'ADO-Linux-Prd-UKS-AgentPool'
+
+variables:
+  - name: terraformVersion
+    value: '1.12.0'
+
+  - name: terraformWorkingDirectory
+    value: '$(System.DefaultWorkingDirectory)/terraform'
+
+stages:
+
+  # ============================================================
+  # DESTROY PLAN
+  # ============================================================
+  - stage: DestroyPlan
+    displayName: 'Terraform Destroy Plan'
+
+    jobs:
+      - job: TerraformDestroyPlan
+        displayName: 'Terraform Destroy Plan'
+
+        steps:
+          - template: templates/terraform-plan-destroy.yml
+            parameters:
+              environment: 'Dev2'
+              workingDirectory: $(terraformWorkingDirectory)
+              terraformVersion: $(terraformVersion)
+
+              # Use the SAME values that Dev2 currently uses
+              azureServiceConnection: '<DEV2-SERVICE-CONNECTION>'
+              backendResourceGroup: '<BACKEND-RESOURCE-GROUP>'
+              backendStorageAccount: '<BACKEND-STORAGE-ACCOUNT>'
+              backendContainer: '<BACKEND-CONTAINER>'
+              backendKey: 'dev2.tfstate'
+
+              variablesFile: 'environments/dev2.tfvars'
+
+              location: '<LOCATION>'
+              VnetResourceGroupName: '<VNET-RG>'
+              vnetName: '<VNET-NAME>'
+              subnetName: '<SUBNET-NAME>'
+              privateEndpointName: '<PRIVATE-ENDPOINT-NAME>'
+              privateendpointsubnetcidr: '<PRIVATE-ENDPOINT-SUBNET-CIDR>'
+              privateendpointsubnetnsg: '<PRIVATE-ENDPOINT-SUBNET-NSG>'
+              stateSubscription: '<STATE-SUBSCRIPTION>'
+              stateStorageAccountSku: '<STATE-STORAGE-SKU>'
+
+  # ============================================================
+  # DESTROY
+  # ============================================================
+  - stage: Destroy
+    displayName: 'Terraform Destroy'
+    dependsOn: DestroyPlan
+
+    condition: |
+      and(
+        succeeded(),
+        eq(${{ parameters.runTerraformDestroy }}, true)
+      )
+
+    jobs:
+      - job: TerraformDestroy
+        displayName: 'Terraform Destroy'
+
+        steps:
+          - template: templates/terraform-destroy.yml
+            parameters:
+              environment: 'Dev2'
+              workingDirectory: $(terraformWorkingDirectory)
+              terraformVersion: $(terraformVersion)
+
+              azureServiceConnection: '<DEV2-SERVICE-CONNECTION>'
+              backendResourceGroup: '<BACKEND-RESOURCE-GROUP>'
+              backendStorageAccount: '<BACKEND-STORAGE-ACCOUNT>'
+              backendContainer: '<BACKEND-CONTAINER>'
+              backendKey: 'dev2.tfstate'
+
+              variablesFile: 'environments/dev2.tfvars'
+
+              location: '<LOCATION>'
+              VnetResourceGroupName: '<VNET-RG>'
+              vnetName: '<VNET-NAME>'
+              subnetName: '<SUBNET-NAME>'
+              privateEndpointName: '<PRIVATE-ENDPOINT-NAME>'
+              privateendpointsubnetcidr: '<PRIVATE-ENDPOINT-SUBNET-CIDR>'
+              privateendpointsubnetnsg: '<PRIVATE-ENDPOINT-SUBNET-NSG>'
+              stateSubscription: '<STATE-SUBSCRIPTION>'
+              stateStorageAccountSku: '<STATE-STORAGE-SKU>'

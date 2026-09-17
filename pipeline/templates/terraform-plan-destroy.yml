@@ -1,0 +1,153 @@
+# Terraform Destroy Plan Template
+
+parameters:
+  - name: environment
+    type: string
+    default: 'dev'
+
+  - name: workingDirectory
+    type: string
+    default: '$(System.DefaultWorkingDirectory)/terraform'
+
+  - name: terraformVersion
+    type: string
+    default: '1.12.0'
+
+  - name: azureServiceConnection
+    type: string
+
+  - name: backendResourceGroup
+    type: string
+
+  - name: backendStorageAccount
+    type: string
+
+  - name: backendContainer
+    type: string
+
+  - name: backendKey
+    type: string
+
+  - name: variablesFile
+    type: string
+
+  - name: location
+    type: string
+
+  - name: VnetResourceGroupName
+    type: string
+
+  - name: vnetName
+    type: string
+
+  - name: subnetName
+    type: string
+
+  - name: privateEndpointName
+    type: string
+
+  - name: privateendpointsubnetcidr
+    type: string
+
+  - name: privateendpointsubnetnsg
+    type: string
+
+  - name: stateSubscription
+    type: string
+
+  - name: stateStorageAccountSku
+    type: string
+
+
+steps:
+
+  # Install Terraform
+  - task: TerraformInstaller@0
+    displayName: 'Install Terraform ${{ parameters.terraformVersion }}'
+    inputs:
+      terraformVersion: ${{ parameters.terraformVersion }}
+
+
+  # Azure login
+  - template: azure-login.yml
+    parameters:
+      azureServiceConnection: ${{ parameters.azureServiceConnection }}
+
+
+  # Validate backend / networking
+  - template: backend-validation.yml
+    parameters:
+      azureServiceConnection: ${{ parameters.azureServiceConnection }}
+      backendResourceGroup: ${{ parameters.backendResourceGroup }}
+      backendStorageAccount: ${{ parameters.backendStorageAccount }}
+      backendContainer: ${{ parameters.backendContainer }}
+      location: ${{ parameters.location }}
+      VnetResourceGroupName: ${{ parameters.VnetResourceGroupName }}
+      vnet: ${{ parameters.vnetName }}
+      privateendpointsubnetname: ${{ parameters.subnetName }}
+      privateendpointname: ${{ parameters.privateEndpointName }}
+      privateendpointsubnetcidr: ${{ parameters.privateendpointsubnetcidr }}
+      privateendpointsubnetnsg: ${{ parameters.privateendpointsubnetnsg }}
+      stateSubscription: ${{ parameters.stateSubscription }}
+      stateStorageAccountSku: ${{ parameters.stateStorageAccountSku }}
+
+
+  # Configure Azure DevOps Git authentication
+  - template: git-authentication.yml
+    parameters:
+      azureServiceConnection: ${{ parameters.azureServiceConnection }}
+      workingDirectory: ${{ parameters.workingDirectory }}
+
+
+  # Terraform Init
+  - task: TerraformTask@5
+    displayName: 'Terraform Init'
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: ${{ parameters.workingDirectory }}
+      backendServiceArm: ${{ parameters.azureServiceConnection }}
+      backendAzureRmResourceGroupName: ${{ parameters.backendResourceGroup }}
+      backendAzureRmStorageAccountName: ${{ parameters.backendStorageAccount }}
+      backendAzureRmContainerName: ${{ parameters.backendContainer }}
+      backendAzureRmKey: ${{ parameters.backendKey }}
+      backendAzureRmUseEntraIdForAuthentication: false
+
+
+  # Terraform Validate
+  - task: TerraformTask@5
+    displayName: 'Terraform Validate'
+    inputs:
+      provider: 'azurerm'
+      command: 'validate'
+      workingDirectory: ${{ parameters.workingDirectory }}
+
+
+  # Create a SAVED DESTROY PLAN
+  - task: TerraformTask@5
+    displayName: 'Terraform Destroy Plan'
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      workingDirectory: ${{ parameters.workingDirectory }}
+      commandOptions: >
+        -destroy
+        -var-file="${{ parameters.variablesFile }}"
+        -out="tfplan-destroy-${{ lower(parameters.environment) }}"
+      publishPlanResults: 'tfplan-destroy-${{ lower(parameters.environment) }}'
+      environmentServiceNameAzureRM: ${{ parameters.azureServiceConnection }}
+
+
+  # Publish the exact destroy plan
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Terraform Destroy Plan'
+    inputs:
+      targetPath: '${{ parameters.workingDirectory }}/tfplan-destroy-${{ lower(parameters.environment) }}'
+      artifact: 'tfplan-destroy-${{ lower(parameters.environment) }}'
+      publishLocation: 'pipeline'
+
+
+  # Git cleanup
+  - template: git-cleanup.yml
+    parameters:
+      workingDirectory: ${{ parameters.workingDirectory }}
