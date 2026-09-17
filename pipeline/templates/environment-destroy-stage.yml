@@ -1,0 +1,122 @@
+# Environment Destroy Stage Template
+
+parameters:
+  - name: environmentName
+    type: string
+
+  - name: displayName
+    type: string
+    default: 'Destroy Environment'
+
+  - name: dependsOn
+    type: string
+    default: ''
+
+  - name: condition
+    type: string
+    default: 'succeeded()'
+
+  - name: runTerraformDestroy
+    type: boolean
+    default: false
+
+  - name: workingDirectory
+    type: string
+    default: '$(System.DefaultWorkingDirectory)/terraform'
+
+  - name: terraformVersion
+    type: string
+    default: '1.12.0'
+
+stages:
+  - stage: ${{ parameters.environmentName }}_Destroy
+    displayName: ${{ parameters.displayName }}
+
+    ${{ if ne(parameters.dependsOn, '') }}:
+      dependsOn: ${{ parameters.dependsOn }}
+
+    ${{ if ne(parameters.condition, '') }}:
+      condition: ${{ parameters.condition }}
+
+    # This is the important part.
+    # Dev2 -> ../variables/dev2.yml
+    variables:
+      - template: ../variables/${{ lower(parameters.environmentName) }}.yml
+
+    jobs:
+
+      # ========================================================
+      # DESTROY PLAN
+      # ========================================================
+      - job: ${{ parameters.environmentName }}_DestroyPlan
+        displayName: '${{ parameters.environmentName }} - Terraform Destroy Plan'
+
+        steps:
+          - template: terraform-plan-destroy.yml
+            parameters:
+              environment: ${{ parameters.environmentName }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              terraformVersion: ${{ parameters.terraformVersion }}
+
+              azureServiceConnection: $(azureServiceConnection)
+
+              backendResourceGroup: $(terraformBackendResourceGroup)
+              backendStorageAccount: $(terraformBackendStorageAccount)
+              backendContainer: $(terraformBackendContainer)
+
+              backendKey: '${{ lower(parameters.environmentName) }}.tfstate'
+
+              variablesFile: '$(System.DefaultWorkingDirectory)/environments/${{ lower(parameters.environmentName) }}.tfvars'
+
+              location: $(location)
+              VnetResourceGroupName: $(VnetResourceGroupName)
+              vnetName: $(vnetName)
+              subnetName: $(subnetName)
+              privateEndpointName: $(privateEndpointName)
+              privateendpointsubnetcidr: $(privateendpointsubnetcidr)
+              privateendpointsubnetnsg: $(privateendpointsubnetnsg)
+              stateSubscription: $(stateSubscription)
+              stateStorageAccountSku: $(stateStorageAccountSku)
+
+
+      # ========================================================
+      # EXECUTE DESTROY
+      # ========================================================
+      - job: ${{ parameters.environmentName }}_Destroy
+        displayName: '${{ parameters.environmentName }} - Terraform Destroy'
+
+        dependsOn:
+          - ${{ parameters.environmentName }}_DestroyPlan
+
+        condition: >
+          and(
+            succeeded(),
+            eq(${{ parameters.runTerraformDestroy }}, true)
+          )
+
+        steps:
+          - template: terraform-destroy.yml
+            parameters:
+              environment: ${{ parameters.environmentName }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              terraformVersion: ${{ parameters.terraformVersion }}
+
+              azureServiceConnection: $(azureServiceConnection)
+
+              backendResourceGroup: $(terraformBackendResourceGroup)
+              backendStorageAccount: $(terraformBackendStorageAccount)
+              backendContainer: $(terraformBackendContainer)
+
+              backendKey: '${{ lower(parameters.environmentName) }}.tfstate'
+
+              variablesFile: '$(System.DefaultWorkingDirectory)/environments/${{ lower(parameters.environmentName) }}.tfvars'
+
+              location: $(location)
+              VnetResourceGroupName: $(VnetResourceGroupName)
+              vnetName: $(vnetName)
+              subnetName: $(subnetName)
+              privateEndpointName: $(privateEndpointName)
+              privateendpointsubnetcidr: $(privateendpointsubnetcidr)
+              privateendpointsubnetnsg: $(privateendpointsubnetnsg)
+              stateSubscription: $(stateSubscription)
+              stateStorageAccountSku: $(stateStorageAccountSku)
